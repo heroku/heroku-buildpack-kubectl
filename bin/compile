@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# bin/compile <build-dir> <cache-dir> <env-dir>
+
+set -e
+
+indent() {
+  sed -u 's/^/       /'
+}
+
+
+BUILD_DIR=$1
+CACHE_DIR=$2
+ENV_DIR=$3
+BUILDPACK_DIR=$(dirname "$(dirname "$0")")
+
+
+if [ -e "$ENV_DIR/KUBERNETES_VERSION" ]; then
+    RELEASE=$(< $ENV_DIR/KUBERNETES_VERSION);
+else
+    LATEST_URL="https://storage.googleapis.com/kubernetes-release/release/stable.txt"
+    RELEASE=$(curl --silent --show-error "$LATEST_URL")
+fi
+
+if [[ "$RELEASE" != v* ]]; then
+    RELEASE="v${release}"
+fi
+
+echo "Installing version $RELEASE of kubectl." | indent
+
+# Google uses a different labelling scheme for platform and arch; translate
+# appropriately.
+PLATFORM=$(uname)
+case "$PLATFORM" in
+Linux)
+    PLATFORM=linux
+    ;;
+Darwin)
+    PLATFORM=darwin
+    ;;
+esac
+
+ARCH=$(uname -m)
+case "$ARCH" in
+x86_64)
+    ARCH=amd64
+    ;;
+i686)
+    ARCH=386
+    ;;
+arm*)
+    ARCH=arm
+    ;;
+esac
+
+DOWNLOAD_URL="https://storage.googleapis.com/kubernetes-release/release/$RELEASE/bin/$PLATFORM/$ARCH/kubectl"
+mkdir -p "$CACHE_DIR/kubectl/$RELEASE/$PLATFORM/$ARCH"
+CACHE_FILE="$CACHE_DIR/kubectl/$RELEASE/$PLATFORM/$ARCH/kubectl"
+
+if [ ! -e "$CACHE_FILE" ]; then
+    echo "Downloading kubectl" | indent
+    curl --silent --show-error -o "$CACHE_FILE" "$DOWNLOAD_URL"
+    chmod +x "$CACHE_FILE"
+else
+    echo "Restoring cached kubectl binary" | indent
+fi
+
+mkdir -p "$BUILD_DIR/.heroku/kubectl/bin"
+cp -a "$CACHE_FILE" "$BUILD_DIR/.heroku/kubectl/bin/"
+
+mkdir -p "$BUILD_DIR/.profile.d"
+cat > "$BUILD_DIR/.profile.d/kubectl.sh" <<'PROFILE'
+export PATH="$HOME/.heroku/kubectl/bin:$PATH"
+
+if [ ! -z "$KUBECONFIG" ]; then
+    mkdir -p "$HOME/.kube"
+    echo "$KUBECONFIG" | base64 -d > "$HOME/.kube/config"
+fi
+PROFILE
