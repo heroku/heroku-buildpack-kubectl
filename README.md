@@ -10,6 +10,7 @@ Configuration:
 ## Example
 
 ```bash
+heroku buildpacks:add heroku-community/kubectl
+
 heroku config:set KUBECONFIG=$(base64 configfile)
-heroku buildpacks:add https://github.com/heroku/heroku-buildpack-kubectl
 ```
